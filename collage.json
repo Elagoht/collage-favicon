@@ -1,0 +1,46 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Elagoht/collage-snippets-highlighter/main/schemas/collage-plugin-manifest.schema.json",
+  "name": "elagoht/favicon",
+  "description": "A collage plugin that makes a site's icons from one source image and links them from every page's head.",
+  "repository": "https://github.com/Elagoht/collage-favicon",
+  "config": {
+    "type": "object",
+    "description": "A collage plugin that makes a site's icons from one source image and links them from every page's head.",
+    "properties": {
+      "backgroundColor": {
+        "type": "string"
+      },
+      "display": {
+        "type": "string",
+        "description": "Display is the manifest's display mode. Default \"standalone\"."
+      },
+      "name": {
+        "type": "string",
+        "description": "Name and ShortName are the site's name in the manifest: what an installed app is called, and the shorter label under its icon. ShortName defaults to Name."
+      },
+      "noManifest": {
+        "type": "boolean",
+        "description": "NoManifest leaves out site.webmanifest, and its <link>."
+      },
+      "shortName": {
+        "type": "string"
+      },
+      "source": {
+        "type": "string",
+        "description": "Source is the path of the source image: a PNG (or JPEG, or GIF), square, ideally 512 pixels or larger. It is read from FS when FS is set, and from disk, relative to the working directory, otherwise. Ignored when Image is set."
+      },
+      "startUrl": {
+        "type": "string",
+        "description": "StartURL is the page an installed app opens on. Default \"/\"."
+      },
+      "svg": {
+        "type": "string",
+        "description": "SVG is the path of an SVG version of the icon, read the way Source is and served unchanged as /icon.svg. Optional: an SVG is not rasterised, so it is never a substitute for Source."
+      },
+      "themeColor": {
+        "type": "string",
+        "description": "ThemeColor colours the browser's interface around the site, in the head's <meta name=\"theme-color\"> and the manifest. BackgroundColor is the splash screen's colour while an installed app starts, and what the Apple touch icon's transparent pixels are filled with — iOS fills them with black otherwise. Each is a CSS hex colour, \"#0f172a\", or a colour name; empty leaves it out."
+      }
+    }
+  }
+}

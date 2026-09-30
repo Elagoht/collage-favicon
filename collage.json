@@ -20,7 +20,7 @@
       },
       "noManifest": {
         "type": "boolean",
-        "description": "NoManifest leaves out site.webmanifest, and its <link>."
+        "description": "NoManifest leaves out site.webmanifest, and its \u003clink\u003e."
       },
       "shortName": {
         "type": "string"
@@ -39,8 +39,9 @@
       },
       "themeColor": {
         "type": "string",
-        "description": "ThemeColor colours the browser's interface around the site, in the head's <meta name=\"theme-color\"> and the manifest. BackgroundColor is the splash screen's colour while an installed app starts, and what the Apple touch icon's transparent pixels are filled with — iOS fills them with black otherwise. Each is a CSS hex colour, \"#0f172a\", or a colour name; empty leaves it out."
+        "description": "ThemeColor colours the browser's interface around the site, in the head's \u003cmeta name=\"theme-color\"\u003e and the manifest. BackgroundColor is the splash screen's colour while an installed app starts, and what the Apple touch icon's transparent pixels are filled with — iOS fills them with black otherwise. Each is a CSS hex colour, \"#0f172a\", or a colour name; empty leaves it out."
       }
-    }
+    },
+    "additionalProperties": false
   }
 }

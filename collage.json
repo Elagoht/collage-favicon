@@ -3,6 +3,7 @@
   "name": "elagoht/favicon",
   "description": "A collage plugin that makes a site's icons from one source image and links them from every page's head.",
   "repository": "https://github.com/Elagoht/collage-favicon",
+  "setup": "Icons are made from one image: set `\"source\"` in this plugin's section of `plugins-config.json` to a square PNG, 512 pixels or larger, or give `FS` or `Image` to `favicon.New(...)` in `plugins.go`.",
   "config": {
     "type": "object",
     "description": "A collage plugin that makes a site's icons from one source image and links them from every page's head.",

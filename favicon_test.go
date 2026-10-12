@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -215,18 +216,25 @@ func TestSourcePaths(t *testing.T) {
 
 // A source the plugin cannot use stops the application from starting.
 func TestRefusals(t *testing.T) {
-	for name, opts := range map[string]favicon.Options{
-		"no source":     {},
-		"missing file":  {Source: filepath.Join(t.TempDir(), "nope.png")},
-		"undecodable":   {SourceBytes: []byte("not an image")},
-		"not square":    {SourceBytes: source(t, 512, 300)},
-		"bad svg":       {SourceBytes: source(t, 512, 512), SVGBytes: []byte("<html></html>")},
-		"bad colour":    {SourceBytes: source(t, 512, 512), ThemeColor: `red" onload="x`},
-		"bad bg colour": {SourceBytes: source(t, 512, 512), BackgroundColor: "#12345"},
+	for name, tc := range map[string]struct {
+		opts favicon.Options
+		want error // the sentinel the error wraps, or nil for any error
+	}{
+		"no source":     {favicon.Options{}, favicon.ErrNoSource},
+		"missing file":  {favicon.Options{Source: filepath.Join(t.TempDir(), "nope.png")}, nil},
+		"undecodable":   {favicon.Options{SourceBytes: []byte("not an image")}, nil},
+		"not square":    {favicon.Options{SourceBytes: source(t, 512, 300)}, favicon.ErrNotSquare},
+		"bad svg":       {favicon.Options{SourceBytes: source(t, 512, 512), SVGBytes: []byte("<html></html>")}, favicon.ErrBadSVG},
+		"bad colour":    {favicon.Options{SourceBytes: source(t, 512, 512), ThemeColor: `red" onload="x`}, nil},
+		"bad bg colour": {favicon.Options{SourceBytes: source(t, 512, 512), BackgroundColor: "#12345"}, nil},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := collagetest.TrySite(t, collagetest.WithPlugins(favicon.New(opts))); err == nil {
+			_, err := collagetest.TrySite(t, collagetest.WithPlugins(favicon.New(tc.opts)))
+			switch {
+			case err == nil:
 				t.Error("the application started")
+			case tc.want != nil && !errors.Is(err, tc.want):
+				t.Errorf("err = %v, want %v", err, tc.want)
 			}
 		})
 	}

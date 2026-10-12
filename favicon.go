@@ -55,8 +55,8 @@ const Name = "elagoht/favicon"
 type Options struct {
 	// Source is the path of the source image: a PNG (or JPEG, or GIF), square,
 	// ideally 512 pixels or larger. It is read from FS when FS is set, and from
-	// disk, relative to the working directory, otherwise. Ignored when Image is
-	// set.
+	// disk, relative to the working directory, otherwise. Ignored when
+	// SourceBytes is set.
 	Source string `json:"source"`
 	// SVG is the path of an SVG version of the icon, read the way Source is and
 	// served unchanged as /icon.svg. Optional: an SVG is not rasterised, so it is
@@ -65,10 +65,10 @@ type Options struct {
 	// FS is where Source and SVG are read from: an embed.FS, say, so the binary
 	// runs from any directory. Nil reads them from disk.
 	FS fs.FS `json:"-"`
-	// Image and SVGImage are the files' bytes, for an application that already
-	// has them; each takes the place of its path.
-	Image    []byte `json:"-"`
-	SVGImage []byte `json:"-"`
+	// SourceBytes and SVGBytes are the files' bytes, for an application that
+	// already has them; each takes the place of its path.
+	SourceBytes []byte `json:"-"`
+	SVGBytes    []byte `json:"-"`
 
 	// Name and ShortName are the site's name in the manifest: what an installed
 	// app is called, and the shorter label under its icon. ShortName defaults to
@@ -86,7 +86,7 @@ type Options struct {
 	// Display is the manifest's display mode. Default "standalone".
 	Display string `json:"display"`
 	// StartURL is the page an installed app opens on. Default "/".
-	StartURL string `json:"startUrl"`
+	StartURL string `json:"startURL"`
 	// NoManifest leaves out site.webmanifest, and its <link>.
 	NoManifest bool `json:"noManifest"`
 }
@@ -100,8 +100,8 @@ const minSource = 512
 
 // Errors Init returns for a source it cannot use.
 var (
-	// ErrNoSource is returned when neither Source nor Image is set.
-	ErrNoSource = errors.New("favicon: a source image is required: set Source or Image")
+	// ErrNoSource is returned when neither Source nor SourceBytes is set.
+	ErrNoSource = errors.New("favicon: a source image is required: set source in plugins-config.json, or Source or SourceBytes in Go")
 	// ErrNotSquare is returned for a source whose sides differ by more than a
 	// tenth: made square, it would be squashed or mostly empty.
 	ErrNotSquare = errors.New("favicon: the source image is not square")
@@ -126,7 +126,7 @@ type hoisted struct {
 func New(opts Options) *Plugin { return &Plugin{opts: opts} }
 
 func (p *Plugin) Name() string                   { return Name }
-func (p *Plugin) Version() string                { return "0.1.7" }
+func (p *Plugin) Version() string                { return "0.2.0" }
 func (p *Plugin) Shutdown(context.Context) error { return nil }
 
 var (
@@ -158,7 +158,7 @@ func (p *Plugin) Init(_ context.Context, host collage.Host) error {
 		}
 	}
 
-	raw, err := p.read(o.Image, o.Source)
+	raw, err := p.read(o.SourceBytes, o.Source)
 	if err != nil {
 		return err
 	}
@@ -178,7 +178,7 @@ func (p *Plugin) Init(_ context.Context, host collage.Host) error {
 		host.Logger().Warn("favicon: the source image is smaller than 512 pixels, so the larger icons are upscaled and blurred",
 			"width", w, "height", h)
 	}
-	svg, err := p.read(o.SVGImage, o.SVG)
+	svg, err := p.read(o.SVGBytes, o.SVG)
 	if err != nil {
 		return err
 	}

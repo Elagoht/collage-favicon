@@ -19,6 +19,7 @@ import (
 
 	favicon "github.com/Elagoht/collage-favicon"
 	"github.com/Elagoht/collage/pkg/collage"
+	"github.com/Elagoht/collage/pkg/collagetest"
 )
 
 // source makes a w×h PNG: opaque red with a transparent top-left quarter, so a
@@ -42,21 +43,9 @@ func source(t *testing.T, w, h int) []byte {
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1"/></svg>`
 
-func site(t *testing.T, cfg *collage.Config, p *favicon.Plugin) *collage.App {
+func site(t *testing.T, p *favicon.Plugin, options ...collagetest.SiteOption) *collage.App {
 	t.Helper()
-	cfg.Server = collage.ServerConfig{Host: "localhost", Port: 3000}
-	cfg.Template = collage.TemplateConfig{FS: fstest.MapFS{
-		"t/p.html": {Data: []byte(`<html><head>{{hoist "head"}}</head><body>x</body></html>`)},
-	}, Root: "t"}
-	cfg.Plugins = []collage.Plugin{p}
-	app, err := collage.New(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := app.RegisterPage(collage.NewPage("home").WithContent(collage.NewFragment("home", "p.html").Build()).WithPath("en", "/").Build()); err != nil {
-		t.Fatal(err)
-	}
-	return app
+	return collagetest.NewSite(t, append([]collagetest.SiteOption{collagetest.WithPlugins(p)}, options...)...).App
 }
 
 func get(app *collage.App, path string) *httptest.ResponseRecorder {
@@ -75,7 +64,7 @@ func decodePNG(t *testing.T, b []byte) image.Image {
 }
 
 func TestIcons(t *testing.T) {
-	app := site(t, &collage.Config{}, favicon.New(favicon.Options{Image: source(t, 512, 512)}))
+	app := site(t, favicon.New(favicon.Options{SourceBytes: source(t, 512, 512)}))
 	for _, c := range []struct {
 		path, ctype string
 		size        int
@@ -104,7 +93,7 @@ func TestIcons(t *testing.T) {
 // favicon.ico is an ICO file whose three entries are PNGs of the sizes its
 // directory claims.
 func TestICO(t *testing.T) {
-	app := site(t, &collage.Config{}, favicon.New(favicon.Options{Image: source(t, 600, 600)}))
+	app := site(t, favicon.New(favicon.Options{SourceBytes: source(t, 600, 600)}))
 	rec := get(app, "/favicon.ico")
 	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/x-icon" {
 		t.Fatalf("GET /favicon.ico = %d %q", rec.Code, rec.Header().Get("Content-Type"))
@@ -128,8 +117,8 @@ func TestICO(t *testing.T) {
 }
 
 func TestManifestAndHead(t *testing.T) {
-	app := site(t, &collage.Config{}, favicon.New(favicon.Options{
-		Image: source(t, 512, 512), SVGImage: []byte(svg),
+	app := site(t, favicon.New(favicon.Options{
+		SourceBytes: source(t, 512, 512), SVGBytes: []byte(svg),
 		Name: "The blog", ThemeColor: "#0f172a", BackgroundColor: "#fff",
 	}))
 	rec := get(app, "/site.webmanifest")
@@ -178,7 +167,7 @@ func TestManifestAndHead(t *testing.T) {
 // The Apple touch icon's transparent pixels take the background colour, since
 // iOS would paint them black; the other icons keep their transparency.
 func TestAppleIconBackground(t *testing.T) {
-	app := site(t, &collage.Config{}, favicon.New(favicon.Options{Image: source(t, 512, 512), BackgroundColor: "#00ff00"}))
+	app := site(t, favicon.New(favicon.Options{SourceBytes: source(t, 512, 512), BackgroundColor: "#00ff00"}))
 	apple := decodePNG(t, get(app, "/apple-touch-icon.png").Body.Bytes())
 	if r, g, b, a := apple.At(5, 5).RGBA(); r != 0 || g != 0xffff || b != 0 || a != 0xffff {
 		t.Errorf("apple corner = %d %d %d %d, want opaque green", r, g, b, a)
@@ -193,7 +182,7 @@ func TestAppleIconBackground(t *testing.T) {
 }
 
 func TestNoManifestNoThemeColor(t *testing.T) {
-	app := site(t, &collage.Config{}, favicon.New(favicon.Options{Image: source(t, 512, 512), NoManifest: true}))
+	app := site(t, favicon.New(favicon.Options{SourceBytes: source(t, 512, 512), NoManifest: true}))
 	if rec := get(app, "/site.webmanifest"); rec.Code != http.StatusNotFound {
 		t.Errorf("/site.webmanifest = %d", rec.Code)
 	}
@@ -207,7 +196,7 @@ func TestNoManifestNoThemeColor(t *testing.T) {
 // application's JSON configuration otherwise.
 func TestSourcePaths(t *testing.T) {
 	fsys := fstest.MapFS{"icons/icon.png": {Data: source(t, 512, 512)}, "icons/icon.svg": {Data: []byte(svg)}}
-	app := site(t, &collage.Config{}, favicon.New(favicon.Options{FS: fsys, Source: "icons/icon.png", SVG: "icons/icon.svg"}))
+	app := site(t, favicon.New(favicon.Options{FS: fsys, Source: "icons/icon.png", SVG: "icons/icon.svg"}))
 	if rec := get(app, "/icon.svg"); rec.Code != http.StatusOK {
 		t.Errorf("from FS: /icon.svg = %d", rec.Code)
 	}
@@ -217,28 +206,27 @@ func TestSourcePaths(t *testing.T) {
 	if err := os.WriteFile(path, source(t, 512, 512), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	conf, _ := json.Marshal(map[string]string{"source": path, "name": "Configured"})
-	app = site(t, &collage.Config{PluginConfig: map[string]json.RawMessage{favicon.Name: conf}}, favicon.New(favicon.Options{}))
-	if rec := get(app, "/site.webmanifest"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"Configured"`) {
+	conf, _ := json.Marshal(map[string]string{"source": path, "name": "Configured", "startURL": "/start"})
+	app = site(t, favicon.New(favicon.Options{}), collagetest.WithPluginConfig(favicon.Name, string(conf)))
+	if rec := get(app, "/site.webmanifest"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"Configured"`) || !strings.Contains(rec.Body.String(), `"start_url": "/start"`) {
 		t.Errorf("from configuration: %d %s", rec.Code, rec.Body.String())
 	}
 }
 
-// A source the plugin cannot use stops the application: the handler answers 503.
+// A source the plugin cannot use stops the application from starting.
 func TestRefusals(t *testing.T) {
 	for name, opts := range map[string]favicon.Options{
 		"no source":     {},
 		"missing file":  {Source: filepath.Join(t.TempDir(), "nope.png")},
-		"undecodable":   {Image: []byte("not an image")},
-		"not square":    {Image: source(t, 512, 300)},
-		"bad svg":       {Image: source(t, 512, 512), SVGImage: []byte("<html></html>")},
-		"bad colour":    {Image: source(t, 512, 512), ThemeColor: `red" onload="x`},
-		"bad bg colour": {Image: source(t, 512, 512), BackgroundColor: "#12345"},
+		"undecodable":   {SourceBytes: []byte("not an image")},
+		"not square":    {SourceBytes: source(t, 512, 300)},
+		"bad svg":       {SourceBytes: source(t, 512, 512), SVGBytes: []byte("<html></html>")},
+		"bad colour":    {SourceBytes: source(t, 512, 512), ThemeColor: `red" onload="x`},
+		"bad bg colour": {SourceBytes: source(t, 512, 512), BackgroundColor: "#12345"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			app := site(t, &collage.Config{Logger: slog.New(slog.DiscardHandler)}, favicon.New(opts))
-			if rec := get(app, "/favicon.ico"); rec.Code != http.StatusServiceUnavailable {
-				t.Errorf("status = %d, want 503", rec.Code)
+			if _, err := collagetest.TrySite(t, collagetest.WithPlugins(favicon.New(opts))); err == nil {
+				t.Error("the application started")
 			}
 		})
 	}
@@ -246,24 +234,22 @@ func TestRefusals(t *testing.T) {
 
 // Nearly square is accepted and centred; small is accepted with a warning.
 func TestNearlySquareAndSmall(t *testing.T) {
-	var logs bytes.Buffer
-	app := site(t, &collage.Config{Logger: slog.New(slog.NewTextHandler(&logs, nil))},
-		favicon.New(favicon.Options{Image: source(t, 200, 190)}))
-	rec := get(app, "/icon-512.png")
+	s := collagetest.NewSite(t, collagetest.WithPlugins(favicon.New(favicon.Options{SourceBytes: source(t, 200, 190)})))
+	rec := get(s.App, "/icon-512.png")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
 	if b := decodePNG(t, rec.Body.Bytes()).Bounds(); b.Dx() != 512 || b.Dy() != 512 {
 		t.Errorf("icon-512 = %v", b)
 	}
-	if !strings.Contains(logs.String(), "smaller than 512") {
-		t.Errorf("no warning logged: %s", logs.String())
+	if !s.Logs.Has(slog.LevelWarn, "smaller than 512") {
+		t.Errorf("no warning logged: %s", s.Logs)
 	}
 }
 
 // A static build writes every icon at the root of its output.
 func TestStaticBuild(t *testing.T) {
-	app := site(t, &collage.Config{}, favicon.New(favicon.Options{Image: source(t, 512, 512), SVGImage: []byte(svg)}))
+	app := site(t, favicon.New(favicon.Options{SourceBytes: source(t, 512, 512), SVGBytes: []byte(svg)}))
 	out := t.TempDir()
 	if _, err := collage.Build(context.Background(), app, collage.BuildOptions{OutDir: out}); err != nil {
 		t.Fatal(err)

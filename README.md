@@ -17,7 +17,7 @@ app, err := collage.New(&collage.Config{
 })
 ```
 
-Requires collage v0.50.0 or later.
+Requires collage v0.61.0 or later.
 
 ## What is made
 
@@ -68,7 +68,7 @@ nothing appears.
 - `Source` and `SVG` are paths. They are read from disk, relative to the working
   directory — or from `FS` when it is set, an `embed.FS` so the binary runs from
   anywhere.
-- `Image` and `SVGImage` are the files' bytes, set in Go, and take the place of
+- `SourceBytes` and `SVGBytes` are the files' bytes, set in Go, and take the place of
   the paths.
 
 The source may be a PNG, a JPEG or a GIF.
@@ -93,13 +93,13 @@ icons are upscaled from it, and look it.
 | `Source` | `source` | — | path of the source image |
 | `SVG` | `svg` | — | path of an SVG version, served as `/icon.svg` |
 | `FS` | — | disk | where `Source` and `SVG` are read from |
-| `Image`, `SVGImage` | — | — | the files' bytes, in place of the paths |
+| `SourceBytes`, `SVGBytes` | — | — | the files' bytes, in place of the paths |
 | `Name` | `name` | — | the manifest's `name` |
 | `ShortName` | `shortName` | `Name` | the manifest's `short_name` |
 | `ThemeColor` | `themeColor` | — | `theme_color` and `<meta name="theme-color">` |
 | `BackgroundColor` | `backgroundColor` | — | `background_color`, and the Apple touch icon's fill |
 | `Display` | `display` | `standalone` | the manifest's display mode |
-| `StartURL` | `startUrl` | `/` | the page an installed app opens on |
+| `StartURL` | `startURL` | `/` | the page an installed app opens on |
 | `NoManifest` | `noManifest` | `false` | serve no manifest, and link none |
 
 ## Configuration
@@ -132,3 +132,17 @@ icons are upscaled from it, and look it.
   development too.
 - **An ICO of PNG entries** is read by every browser since Internet Explorer 9, not
   by older Windows shell components that expect bitmaps.
+
+## Changes
+
+### v0.2.0
+
+Changed in v0.2.0, for the v1 plugin conventions:
+
+| was | now |
+|---|---|
+| `Options.Image` | `Options.SourceBytes` |
+| `Options.SVGImage` | `Options.SVGBytes` |
+| `"startUrl"` | `"startURL"` (the old spelling still decodes: keys match case-insensitively) |
+
+- Requires collage v0.61.0.

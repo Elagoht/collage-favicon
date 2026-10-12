@@ -265,11 +265,7 @@ func TestNearlySquareAndSmall(t *testing.T) {
 func TestStaticBuild(t *testing.T) {
 	app := site(t, &collage.Config{}, favicon.New(favicon.Options{Image: source(t, 512, 512), SVGImage: []byte(svg)}))
 	out := t.TempDir()
-	b, err := collage.NewBuilder(app, collage.BuildOptions{OutDir: out})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := b.Build(context.Background()); err != nil {
+	if _, err := collage.Build(context.Background(), app, collage.BuildOptions{OutDir: out}); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"favicon.ico", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "icon.svg", "site.webmanifest"} {

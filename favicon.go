@@ -126,7 +126,7 @@ type hoisted struct {
 func New(opts Options) *Plugin { return &Plugin{opts: opts} }
 
 func (p *Plugin) Name() string                   { return Name }
-func (p *Plugin) Version() string                { return "0.1.6" }
+func (p *Plugin) Version() string                { return "0.1.7" }
 func (p *Plugin) Shutdown(context.Context) error { return nil }
 
 var (

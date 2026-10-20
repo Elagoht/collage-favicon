@@ -5,19 +5,25 @@ the Apple touch icon, the web app icons and the manifest that lists them — ser
 them at the root, and links them from every page's head. Registering it is the
 whole of it: nothing in a page has to ask.
 
-```go
-app, err := collage.New(&collage.Config{
-	Plugins: []collage.Plugin{favicon.New(favicon.Options{
-		Source:          "assets/icon.png",
-		SVG:             "assets/icon.svg",
-		Name:            "The blog",
-		ThemeColor:      "#0f172a",
-		BackgroundColor: "#ffffff",
-	})},
-})
+```sh
+collage plugin add elagoht/favicon
 ```
 
-Requires collage v0.61.0 or later.
+That is all it needs. The icons are made from the site's own `static/icon.png`
+(and `static/icon.svg`, if there is one), and until there is one they are
+collage's. Put a square PNG, 512 pixels or larger, there and restart.
+
+```json
+{
+  "elagoht/favicon": {
+    "name": "The blog",
+    "themeColor": "#0f172a",
+    "backgroundColor": "#ffffff"
+  }
+}
+```
+
+Requires collage v0.68.0 or later.
 
 ## What is made
 
@@ -65,34 +71,40 @@ nothing appears.
 
 ## Where the source comes from
 
-- `Source` and `SVG` are paths. They are read from disk, relative to the working
-  directory — or from `FS` when it is set, an `embed.FS` so the binary runs from
-  anywhere.
+- By default, `/static/icon.png` and `/static/icon.svg`: URLs of the site's own,
+  read through the application's mount that serves them (`Host.OpenMounted`).
+  That is the disk in development and the copy the binary embeds once built, so
+  nothing has to be copied beside the binary. The SVG is optional.
+- `Source` and `SVG` name another file. One starting with `/` is a URL, read the
+  same way; any other path is read from disk, relative to the working directory,
+  or from `FS` when it is set.
 - `SourceBytes` and `SVGBytes` are the files' bytes, set in Go, and take the place of
   the paths.
 
 The source may be a PNG, a JPEG or a GIF.
 
-## Refused at startup
+## When the source cannot be used
 
-The application does not start — the handler answers 503 and logs why — when:
+The application starts anyway, with collage's icons, and the log says why:
 
-- there is no source, or it cannot be read or decoded;
-- its sides differ by more than a tenth (a nearly square image is centred on a
-  transparent square, not stretched);
-- the SVG holds no `<svg>` element;
-- `ThemeColor` or `BackgroundColor` is neither a hex colour nor a colour name.
+- no source at the default URL is an info line saying where to put one;
+- a source that was named but is missing or cannot be decoded, or whose sides
+  differ by more than a tenth, is a warning (a nearly square image is centred on
+  a transparent square, not stretched);
+- an SVG that holds no `<svg>` element is left out, with a warning.
 
-A source smaller than 512 pixels is accepted with a warning in the log: the larger
-icons are upscaled from it, and look it.
+A source smaller than 512 pixels is accepted with a warning: the larger icons are
+upscaled from it, and look it. Only a `ThemeColor` or `BackgroundColor` that is
+neither a hex colour nor a colour name stops the application: that is a mistake
+in the configuration, not a missing file.
 
 ## Options
 
 | Option | JSON | Default | |
 | --- | --- | --- | --- |
-| `Source` | `source` | — | path of the source image |
-| `SVG` | `svg` | — | path of an SVG version, served as `/icon.svg` |
-| `FS` | — | disk | where `Source` and `SVG` are read from |
+| `Source` | `source` | `/static/icon.png` | the source image: a URL of the site's, or a path |
+| `SVG` | `svg` | `/static/icon.svg`, if there is one | an SVG version, served as `/icon.svg` |
+| `FS` | — | disk | where a `Source` or `SVG` that is a path is read from |
 | `SourceBytes`, `SVGBytes` | — | — | the files' bytes, in place of the paths |
 | `Name` | `name` | — | the manifest's `name` |
 | `ShortName` | `shortName` | `Name` | the manifest's `short_name` |
@@ -107,8 +119,8 @@ icons are upscaled from it, and look it.
 ```json
 {
   "elagoht/favicon": {
-    "source": "assets/icon.png",
-    "svg": "assets/icon.svg",
+    "source": "/static/brand/icon.png",
+    "svg": "/static/brand/icon.svg",
     "name": "The blog",
     "shortName": "Blog",
     "themeColor": "#0f172a",
@@ -134,6 +146,17 @@ icons are upscaled from it, and look it.
   by older Windows shell components that expect bitmaps.
 
 ## Changes
+
+### v0.3.0
+
+- **No configuration needed.** The source defaults to the site's own
+  `/static/icon.png` (and `/static/icon.svg`), read through the application's
+  mount, so a built binary carries it.
+- **A source that cannot be used no longer stops the application.** It starts
+  with collage's icons and logs why; `ErrNoSource` is no longer returned.
+- A `source` starting with `/` is a URL of the site's. A path without one is read
+  as before.
+- Requires collage v0.68.0 (`Host.OpenMounted`).
 
 ### v0.2.0
 

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -214,29 +213,75 @@ func TestSourcePaths(t *testing.T) {
 	}
 }
 
-// A source the plugin cannot use stops the application from starting.
-func TestRefusals(t *testing.T) {
+// A source the plugin cannot use does not stop the application: it starts with
+// collage's icons, and the log says why.
+func TestFallsBackToCollagesIcon(t *testing.T) {
 	for name, tc := range map[string]struct {
-		opts favicon.Options
-		want error // the sentinel the error wraps, or nil for any error
+		opts  favicon.Options
+		level slog.Level
+		log   string
 	}{
-		"no source":     {favicon.Options{}, favicon.ErrNoSource},
-		"missing file":  {favicon.Options{Source: filepath.Join(t.TempDir(), "nope.png")}, nil},
-		"undecodable":   {favicon.Options{SourceBytes: []byte("not an image")}, nil},
-		"not square":    {favicon.Options{SourceBytes: source(t, 512, 300)}, favicon.ErrNotSquare},
-		"bad svg":       {favicon.Options{SourceBytes: source(t, 512, 512), SVGBytes: []byte("<html></html>")}, favicon.ErrBadSVG},
-		"bad colour":    {favicon.Options{SourceBytes: source(t, 512, 512), ThemeColor: `red" onload="x`}, nil},
-		"bad bg colour": {favicon.Options{SourceBytes: source(t, 512, 512), BackgroundColor: "#12345"}, nil},
+		"no source":    {favicon.Options{}, slog.LevelInfo, "put a square PNG"},
+		"missing file": {favicon.Options{Source: filepath.Join(t.TempDir(), "nope.png")}, slog.LevelWarn, "cannot be used"},
+		"missing URL":  {favicon.Options{Source: "/static/nope.png"}, slog.LevelWarn, "cannot be used"},
+		"undecodable":  {favicon.Options{SourceBytes: []byte("not an image")}, slog.LevelWarn, "cannot be used"},
+		"not square":   {favicon.Options{SourceBytes: source(t, 512, 300)}, slog.LevelWarn, "cannot be used"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := collagetest.TrySite(t, collagetest.WithPlugins(favicon.New(tc.opts)))
-			switch {
-			case err == nil:
-				t.Error("the application started")
-			case tc.want != nil && !errors.Is(err, tc.want):
-				t.Errorf("err = %v, want %v", err, tc.want)
+			s := collagetest.NewSite(t, collagetest.WithPlugins(favicon.New(tc.opts)))
+			if rec := get(s.App, "/icon-512.png"); rec.Code != http.StatusOK {
+				t.Errorf("/icon-512.png = %d, want collage's icon", rec.Code)
+			}
+			if rec := get(s.App, "/icon.svg"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "puzzle piece") {
+				t.Errorf("/icon.svg = %d, want collage's logo", rec.Code)
+			}
+			if !s.Logs.Has(tc.level, tc.log) {
+				t.Errorf("no %v %q logged: %s", tc.level, tc.log, s.Logs)
 			}
 		})
+	}
+}
+
+// A bad SVG is left out, with a warning; the PNG icons are the site's own.
+func TestBadSVGIsLeftOut(t *testing.T) {
+	s := collagetest.NewSite(t, collagetest.WithPlugins(favicon.New(favicon.Options{SourceBytes: source(t, 512, 512), SVGBytes: []byte("<html></html>")})))
+	if rec := get(s.App, "/icon.svg"); rec.Code != http.StatusNotFound {
+		t.Errorf("/icon.svg = %d, want none", rec.Code)
+	}
+	if !s.Logs.Has(slog.LevelWarn, "SVG cannot be used") {
+		t.Errorf("no warning logged: %s", s.Logs)
+	}
+}
+
+// A colour that is not one is a mistake in the configuration, and still stops
+// the application.
+func TestBadColourRefused(t *testing.T) {
+	for _, opts := range []favicon.Options{
+		{SourceBytes: source(t, 512, 512), ThemeColor: `red" onload="x`},
+		{SourceBytes: source(t, 512, 512), BackgroundColor: "#12345"},
+	} {
+		if _, err := collagetest.TrySite(t, collagetest.WithPlugins(favicon.New(opts))); err == nil {
+			t.Errorf("%+v: the application started", opts)
+		}
+	}
+}
+
+// With nothing configured the source is the site's own /static/icon.png, and
+// /static/icon.svg beside it, read through the application's mount — embedded
+// in a built binary, so nothing has to be copied next to it.
+func TestSourceFromTheSitesStaticDirectory(t *testing.T) {
+	static := fstest.MapFS{"icon.png": {Data: source(t, 512, 512)}, "icon.svg": {Data: []byte(svg)}}
+	s := collagetest.NewSite(t, collagetest.WithPlugins(favicon.New(favicon.Options{})),
+		collagetest.WithSetup(func(app *collage.App) error { return app.Mount("/static/", static) }))
+	img := decodePNG(t, get(s.App, "/icon-512.png").Body.Bytes())
+	if _, _, _, a := img.At(500, 500).RGBA(); a == 0 {
+		t.Error("/icon-512.png is not the site's icon")
+	}
+	if rec := get(s.App, "/icon.svg"); rec.Body.String() != svg {
+		t.Errorf("/icon.svg = %q, want the site's", rec.Body.String())
+	}
+	if s.Logs.Has(slog.LevelInfo, "collage's icon") {
+		t.Errorf("collage's icon was used: %s", s.Logs)
 	}
 }
 

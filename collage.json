@@ -3,7 +3,7 @@
   "name": "elagoht/favicon",
   "description": "A collage plugin that makes a site's icons from one source image and links them from every page's head.",
   "repository": "https://github.com/Elagoht/collage-favicon",
-  "setup": "Needs a square PNG, 512 pixels or larger, or the application does not start: save it as `static/icon.png`, and in `plugins.go` write `favicon.New(favicon.Options{FS: files, Source: \"static/icon.png\"})`.\nOptional: `\"name\"` and `\"themeColor\"` in `plugins-config.json`.\n`files` is what `embed.go` embeds in a project `collage new` made (before collage v0.68.0, `templatesFS` or `staticFS`).",
+  "setup": "Works on its own: until the site has its own icon it serves collage's.\nPut a square PNG, 512 pixels or larger, at `static/icon.png`, and optionally an SVG at `static/icon.svg`. They are read by their URL through the site's `/static/` mount, so a built binary carries them and nothing is copied beside it.\nOptional: `\"name\"` and `\"themeColor\"` in `plugins-config.json`.",
   "config": {
     "type": "object",
     "description": "A collage plugin that makes a site's icons from one source image and links them from every page's head.",
@@ -28,7 +28,7 @@
       },
       "source": {
         "type": "string",
-        "description": "Source is the path of the source image: a PNG (or JPEG, or GIF), square, ideally 512 pixels or larger. It is read from FS when FS is set, and from disk, relative to the working directory, otherwise. Ignored when SourceBytes is set."
+        "description": "Source is the source image: a PNG (or JPEG, or GIF), square, ideally 512 pixels or larger. A path starting with \"/\" is a URL of the site's own, read through the application's mount that serves it — the default, \"/static/icon.png\", is static/icon.png, embedded in a built binary. Any other path is read from FS when FS is set, and from disk, relative to the working directory, otherwise. Ignored when SourceBytes is set."
       },
       "startURL": {
         "type": "string",
@@ -36,7 +36,7 @@
       },
       "svg": {
         "type": "string",
-        "description": "SVG is the path of an SVG version of the icon, read the way Source is and served unchanged as /icon.svg. Optional: an SVG is not rasterised, so it is never a substitute for Source."
+        "description": "SVG is an SVG version of the icon, read the way Source is and served unchanged as /icon.svg. Optional: an SVG is not rasterised, so it is never a substitute for Source. With neither set, \"/static/icon.svg\" is used when the site has one."
       },
       "themeColor": {
         "type": "string",

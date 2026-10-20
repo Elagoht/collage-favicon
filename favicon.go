@@ -3,12 +3,15 @@
 //
 //	app, err := collage.New(&collage.Config{
 //		Plugins: []collage.Plugin{favicon.New(favicon.Options{
-//			Source:     "assets/icon.png",
-//			SVG:        "assets/icon.svg",
 //			Name:       "The blog",
 //			ThemeColor: "#0f172a",
 //		})},
 //	})
+//
+// The source is the site's own static/icon.png, read by its URL,
+// /static/icon.png, through the application's mount: from disk in development,
+// from the copy the binary embeds once built. A static/icon.svg beside it is
+// served too. Until there is one, the icons are collage's own.
 //
 // From a square PNG, ideally 512 pixels or more, it makes favicon.ico (16, 32 and
 // 48 pixels), apple-touch-icon.png (180), icon-192.png and icon-512.png, and a
@@ -18,15 +21,16 @@
 // them like any other file. Every page's head gets the matching <link> and
 // <meta name="theme-color"> tags through {{hoist "head"}}.
 //
-// A source that cannot be decoded, or is far from square, stops the application
-// from starting: a site whose icon silently failed looks fine to everyone but the
-// person looking at a browser tab.
+// A source that is missing, cannot be decoded, or is far from square does not
+// stop the application: it starts with collage's icons, and says at startup
+// what to put where.
 package favicon
 
 import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	_ "embed" // the default icons
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -38,6 +42,7 @@ import (
 	_ "image/gif" // registered for image.Decode: a source may be any of these
 	_ "image/jpeg"
 	"image/png"
+	"io"
 	"io/fs"
 	"os"
 	"regexp"
@@ -53,17 +58,20 @@ const Name = "elagoht/favicon"
 
 // Options configures the plugin.
 type Options struct {
-	// Source is the path of the source image: a PNG (or JPEG, or GIF), square,
-	// ideally 512 pixels or larger. It is read from FS when FS is set, and from
-	// disk, relative to the working directory, otherwise. Ignored when
-	// SourceBytes is set.
+	// Source is the source image: a PNG (or JPEG, or GIF), square, ideally 512
+	// pixels or larger. A path starting with "/" is a URL of the site's own,
+	// read through the application's mount that serves it — the default,
+	// "/static/icon.png", is static/icon.png, embedded in a built binary. Any
+	// other path is read from FS when FS is set, and from disk, relative to the
+	// working directory, otherwise. Ignored when SourceBytes is set.
 	Source string `json:"source"`
-	// SVG is the path of an SVG version of the icon, read the way Source is and
-	// served unchanged as /icon.svg. Optional: an SVG is not rasterised, so it is
-	// never a substitute for Source.
+	// SVG is an SVG version of the icon, read the way Source is and served
+	// unchanged as /icon.svg. Optional: an SVG is not rasterised, so it is never
+	// a substitute for Source. With neither set, "/static/icon.svg" is used when
+	// the site has one.
 	SVG string `json:"svg"`
-	// FS is where Source and SVG are read from: an embed.FS, say, so the binary
-	// runs from any directory. Nil reads them from disk.
+	// FS is where a Source or SVG not starting with "/" is read from: an
+	// embed.FS, say. Nil reads them from disk.
 	FS fs.FS `json:"-"`
 	// SourceBytes and SVGBytes are the files' bytes, for an application that
 	// already has them; each takes the place of its path.
@@ -91,6 +99,21 @@ type Options struct {
 	NoManifest bool `json:"noManifest"`
 }
 
+// defaultSource and defaultSVG are where the icon is looked for when none is
+// named: the site's own static directory, by its URL.
+const (
+	defaultSource = "/static/icon.png"
+	defaultSVG    = "/static/icon.svg"
+)
+
+// collageIcon and collageSVG are the icons served until the site has its own.
+//
+//go:embed defaulticon/icon.png
+var collageIcon []byte
+
+//go:embed defaulticon/icon.svg
+var collageSVG []byte
+
 // Sizes favicon.ico holds.
 var icoSizes = []int{16, 32, 48}
 
@@ -98,14 +121,17 @@ var icoSizes = []int{16, 32, 48}
 // warned about.
 const minSource = 512
 
-// Errors Init returns for a source it cannot use.
+// Why a source is not used. Init logs them and serves collage's icons instead;
+// it no longer returns them.
 var (
-	// ErrNoSource is returned when neither Source nor SourceBytes is set.
+	// ErrNoSource was returned when neither Source nor SourceBytes was set.
+	//
+	// Deprecated: with no source the plugin serves collage's icons.
 	ErrNoSource = errors.New("favicon: a source image is required: set source in plugins-config.json, or Source or SourceBytes in Go")
-	// ErrNotSquare is returned for a source whose sides differ by more than a
-	// tenth: made square, it would be squashed or mostly empty.
+	// ErrNotSquare is a source whose sides differ by more than a tenth: made
+	// square, it would be squashed or mostly empty.
 	ErrNotSquare = errors.New("favicon: the source image is not square")
-	// ErrBadSVG is returned for an SVG that does not hold an <svg> element.
+	// ErrBadSVG is an SVG that does not hold an <svg> element.
 	ErrBadSVG = errors.New("favicon: the SVG is not an SVG")
 )
 
@@ -126,7 +152,7 @@ type hoisted struct {
 func New(opts Options) *Plugin { return &Plugin{opts: opts} }
 
 func (p *Plugin) Name() string                   { return Name }
-func (p *Plugin) Version() string                { return "0.2.1" }
+func (p *Plugin) Version() string                { return "0.3.0" }
 func (p *Plugin) Shutdown(context.Context) error { return nil }
 
 var (
@@ -158,33 +184,7 @@ func (p *Plugin) Init(_ context.Context, host collage.Host) error {
 		}
 	}
 
-	raw, err := p.read(o.SourceBytes, o.Source)
-	if err != nil {
-		return err
-	}
-	if raw == nil {
-		return ErrNoSource
-	}
-	src, _, err := image.Decode(bytes.NewReader(raw))
-	if err != nil {
-		return fmt.Errorf("favicon: the source image cannot be decoded: %w", err)
-	}
-	b := src.Bounds()
-	w, h := b.Dx(), b.Dy()
-	if w == 0 || h == 0 || abs(w-h)*10 > max(w, h) {
-		return fmt.Errorf("%w: it is %dx%d", ErrNotSquare, w, h)
-	}
-	if min(w, h) < minSource {
-		host.Logger().Warn("favicon: the source image is smaller than 512 pixels, so the larger icons are upscaled and blurred",
-			"width", w, "height", h)
-	}
-	svg, err := p.read(o.SVGBytes, o.SVG)
-	if err != nil {
-		return err
-	}
-	if svg != nil && !bytes.Contains(svg, []byte("<svg")) {
-		return ErrBadSVG
-	}
+	src, raw, svg := p.load(host)
 
 	files, err := p.render(src, svg)
 	if err != nil {
@@ -217,29 +217,88 @@ func (p *Plugin) Init(_ context.Context, host collage.Host) error {
 	return nil
 }
 
-// read returns data when it is set, and otherwise the file at name, from FS or
-// from disk. Neither is nil, not an error: the caller decides whether the file
-// was required.
-func (p *Plugin) read(data []byte, name string) ([]byte, error) {
+// load returns the source image, its bytes, and the SVG, or nil for none. What
+// cannot be used is logged, never returned: the site starts with collage's
+// icons, and the log says what to put where.
+func (p *Plugin) load(host collage.Host) (image.Image, []byte, []byte) {
+	o := p.opts
+	named := o.Source != "" || o.SourceBytes != nil
+	source, svgName := o.Source, o.SVG
+	if source == "" {
+		source = defaultSource
+	}
+	if !named && svgName == "" {
+		svgName = defaultSVG
+	}
+
+	src, raw, err := p.decode(host, o.SourceBytes, source)
+	if err != nil {
+		switch {
+		case !named && errors.Is(err, fs.ErrNotExist):
+			host.Logger().Info("favicon: serving collage's icon until the site has its own: put a square PNG, 512 pixels or larger, at static/icon.png")
+		default:
+			host.Logger().Warn("favicon: the source image cannot be used, so collage's icon is served", "source", source, "error", err)
+		}
+		src, _, _ = image.Decode(bytes.NewReader(collageIcon))
+		return src, collageIcon, collageSVG
+	}
+
+	svg, err := p.read(host, o.SVGBytes, svgName)
+	switch {
+	case err != nil && (o.SVG != "" || o.SVGBytes != nil || !errors.Is(err, fs.ErrNotExist)):
+		host.Logger().Warn("favicon: the SVG cannot be used, so only the PNG icons are served", "svg", svgName, "error", err)
+		svg = nil
+	case svg != nil && !bytes.Contains(svg, []byte("<svg")):
+		host.Logger().Warn("favicon: the SVG cannot be used, so only the PNG icons are served", "svg", svgName, "error", ErrBadSVG)
+		svg = nil
+	}
+	return src, raw, svg
+}
+
+// decode reads the source image and checks that it is one, and square.
+func (p *Plugin) decode(host collage.Host, data []byte, name string) (image.Image, []byte, error) {
+	raw, err := p.read(host, data, name)
+	if err != nil {
+		return nil, nil, err
+	}
+	src, _, err := image.Decode(bytes.NewReader(raw))
+	if err != nil {
+		return nil, nil, fmt.Errorf("it cannot be decoded: %w", err)
+	}
+	b := src.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w == 0 || h == 0 || abs(w-h)*10 > max(w, h) {
+		return nil, nil, fmt.Errorf("%w: it is %dx%d", ErrNotSquare, w, h)
+	}
+	if min(w, h) < minSource {
+		host.Logger().Warn("favicon: the source image is smaller than 512 pixels, so the larger icons are upscaled and blurred",
+			"width", w, "height", h)
+	}
+	return src, raw, nil
+}
+
+// read returns data when it is set, and otherwise the file at name: through the
+// application's mounts for a URL starting with "/", from FS or from disk for
+// any other path. No name is fs.ErrNotExist.
+func (p *Plugin) read(host collage.Host, data []byte, name string) ([]byte, error) {
 	if data != nil {
 		return data, nil
 	}
 	if name == "" {
-		return nil, nil
+		return nil, fs.ErrNotExist
 	}
-	var (
-		raw []byte
-		err error
-	)
+	if strings.HasPrefix(name, "/") {
+		f, err := host.OpenMounted(name)
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		return io.ReadAll(f)
+	}
 	if p.opts.FS != nil {
-		raw, err = fs.ReadFile(p.opts.FS, name)
-	} else {
-		raw, err = os.ReadFile(name)
+		return fs.ReadFile(p.opts.FS, name)
 	}
-	if err != nil {
-		return nil, fmt.Errorf("favicon: %w", err)
-	}
-	return raw, nil
+	return os.ReadFile(name)
 }
 
 type file struct {

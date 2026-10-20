@@ -3,7 +3,7 @@
   "name": "elagoht/favicon",
   "description": "A collage plugin that makes a site's icons from one source image and links them from every page's head.",
   "repository": "https://github.com/Elagoht/collage-favicon",
-  "setup": "Needs a square PNG, 512 pixels or larger, or the application does not start: save it as `static/icon.png`, and in `plugins.go` write `favicon.New(favicon.Options{FS: files, Source: \"static/icon.png\"})`.\nOptional: `\"name\"` and `\"themeColor\"` in `plugins-config.json`.",
+  "setup": "Needs a square PNG, 512 pixels or larger, or the application does not start: save it as `static/icon.png`, and in `plugins.go` write `favicon.New(favicon.Options{FS: files, Source: \"static/icon.png\"})`.\nOptional: `\"name\"` and `\"themeColor\"` in `plugins-config.json`.\n`files` is what `embed.go` embeds in a project `collage new` made (before collage v0.68.0, `templatesFS` or `staticFS`).",
   "config": {
     "type": "object",
     "description": "A collage plugin that makes a site's icons from one source image and links them from every page's head.",

@@ -5,7 +5,7 @@ module github.com/Elagoht/collage-favicon
 
 go 1.26.0
 
-require github.com/Elagoht/collage v0.61.0
+require github.com/Elagoht/collage v0.68.0
 
 require golang.org/x/image v0.46.0
 
